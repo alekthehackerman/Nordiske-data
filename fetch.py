@@ -24,4 +24,16 @@ m = pd.DataFrame(rows)
 m["above50"] = m["last"] > m["sma50"]
 m["above200"] = m["last"] > m["sma200"]
 m["rank"] = m["mom_12_1"].rank(ascending=False).astype(int)
+caps, curs = {}, {}
+for t in m["ticker"]:
+    try:
+        fi = yf.Ticker(t).fast_info
+        caps[t], curs[t] = fi["market_cap"], fi["currency"]
+    except Exception:
+        caps[t], curs[t] = None, None
+m["mcap"] = m["ticker"].map(caps)
+m["cur"] = m["ticker"].map(curs)
+nordic = m[m["ticker"].str.contains(".", regex=False)]
+pd.DataFrame([{"date": df.index[-1], "n": len(nordic),
+               "pct_above200": round(nordic["above200"].mean(), 3)}]).to_csv("regime.csv", index=False)
 m.sort_values("rank").to_csv("metrics.csv", index=False)
