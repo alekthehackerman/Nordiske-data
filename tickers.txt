@@ -1,0 +1,12 @@
+# Norge
+EQNR.OL
+WAWI.OL
+HAUTO.OL
+# Sverige
+HOFI.ST
+# Danmark
+VWS.CO
+MAERSK-A.CO
+# Finland
+NOKIA.HE
+NESTE.HE
