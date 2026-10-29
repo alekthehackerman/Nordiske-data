@@ -39,8 +39,17 @@ us_core = {t for t in core if "." not in t and not t.startswith("^")}
 screen_u = sorted(set(extra) | set(sp500) | set(ndx) | us_core)
 alltk = sorted(set(core) | set(screen_u))
 
-raw = yf.download(alltk, period="2y", interval="1d", auto_adjust=False,
-                  progress=False, threads=True)
+def group_of(t):
+    if t.startswith("^"):
+        return "idx"
+    return t.split(".")[-1] if "." in t else "US"
+
+parts = []
+for g in sorted({group_of(t) for t in alltk}):
+    tk = [t for t in alltk if group_of(t) == g]
+    parts.append(yf.download(tk, period="2y", interval="1d",
+                             auto_adjust=False, progress=False, threads=True))
+raw = pd.concat(parts, axis=1).sort_index()
 adj = raw["Adj Close"].dropna(how="all")
 
 # ---------- prices.csv (regelporteføljens univers, justerte kurser) ----------
