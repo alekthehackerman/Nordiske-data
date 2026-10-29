@@ -1,0 +1,65 @@
+# Satsporteføljen: egne kandidater og beholdning (S&P 500 og Nasdaq-100 hentes automatisk)
+# Beholdning / følges
+ONDS
+IREN
+HTZ
+KOG.OL
+EQNR.OL
+# Indekser
+OSEBX.OL
+^GSPC
+^IXIC
+# Kjente short-/hype-kandidater
+GME
+AMC
+CVNA
+UPST
+SOFI
+RIVN
+LCID
+PLUG
+BYND
+CHWY
+RDDT
+HOOD
+AFRM
+RKLB
+ASTS
+JOBY
+ACHR
+SMCI
+MSTR
+COIN
+CLSK
+RIOT
+MARA
+SOUN
+BBAI
+QUBT
+RGTI
+IONQ
+OKLO
+SMR
+NNE
+# Storbritannia
+SHEL.L
+AZN.L
+HSBA.L
+ULVR.L
+BP.L
+RR.L
+GSK.L
+BARC.L
+LLOY.L
+BA.L
+# Tyskland
+SAP.DE
+SIE.DE
+ALV.DE
+RHM.DE
+MBG.DE
+BMW.DE
+VOW3.DE
+DTE.DE
+ADS.DE
+IFX.DE
