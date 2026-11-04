@@ -1,4 +1,4 @@
-import io, time
+import io, os, time
 import requests
 import yfinance as yf
 import pandas as pd
@@ -56,6 +56,12 @@ adj = raw["Adj Close"].dropna(how="all")
 cols = [c for c in core if c in adj.columns]
 df = adj[cols].copy()
 df.index = df.index.strftime("%Y-%m-%d")
+# Slå sammen med forrige fil: nye verdier vinner, hull fylles fra forrige kjøring
+if os.path.exists("prices.csv"):
+    old = pd.read_csv("prices.csv", index_col=0)
+    df = df.combine_first(old)
+    df = df[[c for c in cols if c in df.columns]]
+df = df.sort_index().tail(520)
 df.round(4).to_csv("prices.csv")
 
 # ---------- ohlc.csv (siste 10 handelsdager, alle tickere) ----------
@@ -67,8 +73,24 @@ for t in alltk:
         continue
     for date, r in d.tail(10).dropna().iterrows():
         recs.append([date.strftime("%Y-%m-%d"), t, *r.round(4)])
-pd.DataFrame(recs, columns=["date", "ticker", "open", "high", "low", "close"]
-             ).to_csv("ohlc.csv", index=False)
+new_o = pd.DataFrame(recs, columns=["date", "ticker", "open", "high", "low", "close"])
+if os.path.exists("ohlc.csv"):
+    old_o = pd.read_csv("ohlc.csv")
+    new_o = pd.concat([new_o, old_o]).drop_duplicates(["date", "ticker"], keep="first")
+keep_dates = sorted(new_o["date"].unique())[-10:]
+new_o = new_o[new_o["date"].isin(keep_dates)].sort_values(["date", "ticker"])
+new_o.to_csv("ohlc.csv", index=False)
+
+# status.csv: siste komplette dato per børs (>= 80 % av tickerne har rad)
+new_o["grp"] = new_o["ticker"].map(group_of)
+status_rows = []
+for g, sub in new_o.groupby("grp"):
+    n = sub["ticker"].nunique()
+    cnt = sub.groupby("date")["ticker"].nunique()
+    ok = cnt[cnt >= 0.8 * n]
+    status_rows.append({"group": g, "tickers": n,
+                  "last_complete_date": ok.index.max() if len(ok) else None})
+pd.DataFrame(status_rows).to_csv("status.csv", index=False)
 
 # ---------- metrics.csv + regime.csv (regelporteføljen) ----------
 rows = []
