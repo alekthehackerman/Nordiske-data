@@ -1,4 +1,5 @@
 import io, os, time
+from datetime import datetime, timedelta, timezone
 import requests
 import yfinance as yf
 import pandas as pd
@@ -44,11 +45,60 @@ def group_of(t):
         return "idx"
     return t.split(".")[-1] if "." in t else "US"
 
+# Børsene stenger (UTC, vinter): Europa ca. 16:30, USA 21:00. Rader datert i dag før dette
+# er ufullstendige (bare enkeltkurser under handel) og skal ikke lagres som dagens kurs.
+NOW = datetime.now(timezone.utc)
+TODAY = NOW.date()
+CUT = {"US": 21 * 60 + 20, "idx": 21 * 60 + 20}   # minutter etter midnatt UTC; resten = Europa
+EU_CUT = 16 * 60 + 45
+
+
+def expected_date(g):
+    """Siste handelsdag som burde være komplett akkurat nå (ignorerer helligdager)."""
+    cut = CUT.get(g, EU_CUT)
+    d = TODAY if NOW.hour * 60 + NOW.minute >= cut else TODAY - timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def coverage(part, tk, d):
+    try:
+        close = part["Close"]
+    except KeyError:
+        return 0.0
+    cols = [c for c in tk if c in close.columns]
+    if not cols:
+        return 0.0
+    rows = close.loc[[i for i in close.index if i.date() == d], cols]
+    return float(rows.notna().any().sum()) / len(tk) if len(rows) else 0.0
+
+
 parts = []
 for g in sorted({group_of(t) for t in alltk}):
     tk = [t for t in alltk if group_of(t) == g]
-    parts.append(yf.download(tk, period="2y", interval="1d",
-                             auto_adjust=False, progress=False, threads=True))
+    part = yf.download(tk, period="2y", interval="1d",
+                       auto_adjust=False, progress=False, threads=True)
+    exp = expected_date(g)
+    cov = coverage(part, tk, exp)
+    print(f"{g}: {len(tk)} tickere, forventet {exp}, dekning {cov:.0%}")
+    if cov < 0.8 and g not in ("idx",):
+        # Hull (Yahoo gir noen ganger ikke siste dag over natten): prøv igjen med eksplisitte datoer
+        time.sleep(5)
+        try:
+            alt = yf.download(tk, start=(exp - timedelta(days=10)).isoformat(),
+                              end=(TODAY + timedelta(days=2)).isoformat(), interval="1d",
+                              auto_adjust=False, progress=False, threads=False)
+            cov2 = coverage(alt, tk, exp)
+            print(f"{g}: nytt forsøk, dekning {cov2:.0%}")
+            if cov2 > cov:
+                part = part.combine_first(alt)
+        except Exception as e:
+            print(f"{g}: nytt forsøk feilet: {e}")
+    cut = CUT.get(g, EU_CUT)
+    if NOW.hour * 60 + NOW.minute < cut:
+        part = part[[i.date() != TODAY for i in part.index]]
+    parts.append(part)
 raw = pd.concat(parts, axis=1).sort_index()
 adj = raw["Adj Close"].dropna(how="all")
 
@@ -61,7 +111,7 @@ if os.path.exists("prices.csv"):
     old = pd.read_csv("prices.csv", index_col=0)
     df = df.combine_first(old)
     df = df[[c for c in cols if c in df.columns]]
-df = df.sort_index().tail(520)
+df = df.sort_index().dropna(how="all").tail(520)   # fjern helg-/valutarader uten aksjekurser
 df.round(4).to_csv("prices.csv")
 
 # ---------- ohlc.csv (siste 10 handelsdager, alle tickere) ----------
@@ -77,7 +127,10 @@ new_o = pd.DataFrame(recs, columns=["date", "ticker", "open", "high", "low", "cl
 if os.path.exists("ohlc.csv"):
     old_o = pd.read_csv("ohlc.csv")
     new_o = pd.concat([new_o, old_o]).drop_duplicates(["date", "ticker"], keep="first")
-keep_dates = sorted(new_o["date"].unique())[-10:]
+cnt_d = new_o.groupby("date")["ticker"].nunique()
+real_dates = sorted(cnt_d[cnt_d >= 20].index)      # dager med bare valuta (helg) telles ikke
+new_o = new_o[new_o["date"].isin(real_dates)]
+keep_dates = real_dates[-10:]
 new_o = new_o[new_o["date"].isin(keep_dates)].sort_values(["date", "ticker"])
 new_o.to_csv("ohlc.csv", index=False)
 
@@ -90,7 +143,9 @@ for g, sub in new_o.groupby("grp"):
     ok = cnt[cnt >= 0.8 * n]
     status_rows.append({"group": g, "tickers": n,
                   "last_complete_date": ok.index.max() if len(ok) else None})
-pd.DataFrame(status_rows).to_csv("status.csv", index=False)
+st = pd.DataFrame(status_rows)
+st["fetched_utc"] = NOW.strftime("%Y-%m-%d %H:%M")
+st.to_csv("status.csv", index=False)
 
 # ---------- metrics.csv + regime.csv (regelporteføljen) ----------
 rows = []
@@ -123,7 +178,9 @@ m["mcap"] = m["ticker"].map(caps)
 m["cur"] = m["ticker"].map(curs)
 
 nordic = m[m["ticker"].str.contains(".", regex=False)]
-pd.DataFrame([{"date": df.index[-1], "n": len(nordic),
+nordic_cols = [c for c in df.columns if "." in c and not c.startswith("^")]
+nordic_date = df[nordic_cols].dropna(how="all").index[-1]
+pd.DataFrame([{"date": nordic_date, "n": len(nordic),
                "pct_above200": round(nordic["above200"].mean(), 3)}]
              ).to_csv("regime.csv", index=False)
 m.sort_values("rank").to_csv("metrics.csv", index=False)
