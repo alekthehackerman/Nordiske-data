@@ -1,9 +1,14 @@
 name: Hent kurser
 on:
   schedule:
-    - cron: "45 17 * * 1-5"   # etter at Europa har stengt
-    - cron: "30 21 * * 1-5"   # etter at USA har stengt (21:00 UTC vinter)
-    - cron: "30 5 * * 2-6"    # tidlig morgen: fyller eventuelle hull fra natten
+    # GitHub forsinker planlagte jobber ofte med timer, særlig på :00 og :30.
+    # Derfor flere kjøringer på rare minutter innenfor vinduet da Yahoo har komplette dagsdata
+    # (etter at Europa stenger kl. 16:30 UTC og fram mot midnatt UTC).
+    - cron: "17 17 * * 1-5"
+    - cron: "47 18 * * 1-5"
+    - cron: "23 20 * * 1-5"
+    - cron: "13 22 * * 1-5"
+    - cron: "43 23 * * 1-5"
   workflow_dispatch: {}
 permissions:
   contents: write
